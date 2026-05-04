@@ -1,0 +1,131 @@
+from flask import Flask, render_template, request, redirect, url_for
+from datetime import datetime
+import pymysql
+
+app = Flask(__name__)
+
+VALID_TYPES = ["настольный", "ноутбук", "сервер"]
+
+
+# --- подключение к БД прямо здесь ---
+def get_connection():
+    return pymysql.connect(
+        host="localhost",
+        port=8889,  # MAMP
+        user="root",
+        password="root",
+        database="computer_accounting",
+        charset="utf8mb4",
+        cursorclass=pymysql.cursors.DictCursor
+    )
+
+
+@app.route("/")
+def index():
+    return redirect(url_for("list_computers"))
+
+
+@app.route("/add", methods=["GET", "POST"])
+def add_computer():
+    errors = []
+
+    form_data = {
+        "inventory_number": "",
+        "model": "",
+        "computer_type": "",
+        "department": "",
+        "responsible_employee": "",
+        "commissioning_date": ""
+    }
+
+    if request.method == "POST":
+        form_data = {
+            "inventory_number": request.form.get("inventory_number", "").strip(),
+            "model": request.form.get("model", "").strip(),
+            "computer_type": request.form.get("computer_type", "").strip(),
+            "department": request.form.get("department", "").strip(),
+            "responsible_employee": request.form.get("responsible_employee", "").strip(),
+            "commissioning_date": request.form.get("commissioning_date", "").strip()
+        }
+
+        # --- проверка пустых полей ---
+        if not all(form_data.values()):
+            errors.append("Все поля обязательны.")
+
+        # --- проверка типа ---
+        if form_data["computer_type"] not in VALID_TYPES:
+            errors.append("Некорректный тип компьютера.")
+
+        # --- проверка даты ---
+        try:
+            datetime.strptime(form_data["commissioning_date"], "%Y-%m-%d")
+        except ValueError:
+            errors.append("Неверный формат даты (yyyy-mm-dd).")
+
+        # --- если ошибок нет ---
+        if not errors:
+            try:
+                connection = get_connection()
+                cursor = connection.cursor()
+
+                query = """
+                    INSERT INTO computers (
+                        inventory_number,
+                        model,
+                        computer_type,
+                        department,
+                        responsible_employee,
+                        commissioning_date
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """
+
+                cursor.execute(query, (
+                    form_data["inventory_number"],
+                    form_data["model"],
+                    form_data["computer_type"],
+                    form_data["department"],
+                    form_data["responsible_employee"],
+                    form_data["commissioning_date"]
+                ))
+
+                connection.commit()
+
+                cursor.close()
+                connection.close()
+
+                return redirect(url_for("list_computers"))
+
+            except pymysql.err.IntegrityError:
+                errors.append("Инвентарный номер уже существует.")
+
+            except Exception as e:
+                errors.append(f"Ошибка БД: {e}")
+
+    return render_template(
+        "add.html",
+        errors=errors,
+        form_data=form_data,
+        valid_types=VALID_TYPES
+    )
+
+
+@app.route("/computers")
+def list_computers():
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    cursor.execute("""
+        SELECT * FROM computers ORDER BY id DESC
+    """)
+
+    computers = cursor.fetchall()
+
+    cursor.close()
+    connection.close()
+
+    return render_template("list.html", computers=computers)
+
+
+if name == "__main__":
+    app.run(debug=True)
