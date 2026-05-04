@@ -1,0 +1,283 @@
+CREATE DATABASE computer_accounting
+CHARACTER SET utf8mb4
+COLLATE utf8mb4_unicode_ci;
+
+USE computer_accounting;
+
+CREATE TABLE computers (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    inventory_number VARCHAR(100) NOT NULL UNIQUE,
+    model VARCHAR(255) NOT NULL,
+    computer_type ENUM('настольный', 'ноутбук', 'сервер') NOT NULL,
+    department VARCHAR(255) NOT NULL,
+    responsible_employee VARCHAR(255) NOT NULL,
+    commissioning_date DATE NOT NULL
+);
+
+import mysql.connector
+
+
+def get_connection():
+    return mysql.connector.connect(
+        host="localhost",
+        port=8889,          # стандартный порт MySQL в MAMP
+        user="root",
+        password="root",    # стандартный пароль MAMP
+        database="computer_accounting"
+    )
+
+from flask import Flask, render_template, request, redirect, url_for
+from datetime import datetime
+from mysql.connector import IntegrityError
+from db import get_connection
+
+app = Flask(__name__)
+
+VALID_TYPES = ["настольный", "ноутбук", "сервер"]
+
+
+@app.route("/")
+def index():
+    return redirect(url_for("list_computers"))
+
+
+@app.route("/add", methods=["GET", "POST"])
+def add_computer():
+    errors = []
+    form_data = {
+        "inventory_number": "",
+        "model": "",
+        "computer_type": "",
+        "department": "",
+        "responsible_employee": "",
+        "commissioning_date": ""
+    }
+
+    if request.method == "POST":
+        form_data = {
+            "inventory_number": request.form.get("inventory_number", "").strip(),
+            "model": request.form.get("model", "").strip(),
+            "computer_type": request.form.get("computer_type", "").strip(),
+            "department": request.form.get("department", "").strip(),
+            "responsible_employee": request.form.get("responsible_employee", "").strip(),
+            "commissioning_date": request.form.get("commissioning_date", "").strip()
+        }
+
+        for field, value in form_data.items():
+            if not value:
+                errors.append("Все поля обязательны для заполнения.")
+                break
+
+        if form_data["computer_type"] and form_data["computer_type"] not in VALID_TYPES:
+            errors.append("Некорректный тип компьютера.")
+
+        try:
+            datetime.strptime(form_data["commissioning_date"], "%Y-%m-%d")
+        except ValueError:
+            errors.append("Дата должна быть корректной и иметь формат yyyy-mm-dd.")
+
+        if not errors:
+            try:
+                connection = get_connection()
+                cursor = connection.cursor()
+
+                query = """
+                    INSERT INTO computers (
+                        inventory_number,
+                        model,
+                        computer_type,
+                        department,
+                        responsible_employee,
+                        commissioning_date
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """
+
+                cursor.execute(query, (
+                    form_data["inventory_number"],
+                    form_data["model"],
+                    form_data["computer_type"],
+                    form_data["department"],
+                    form_data["responsible_employee"],
+                    form_data["commissioning_date"]
+                ))
+
+                connection.commit()
+                cursor.close()
+                connection.close()
+
+                return redirect(url_for("list_computers"))
+
+            except IntegrityError:
+                errors.append("Инвентарный номер уже существует.")
+
+            except Exception as e:
+                errors.append(f"Ошибка базы данных: {e}")
+
+    return render_template(
+        "add.html",
+        errors=errors,
+        form_data=form_data,
+        valid_types=VALID_TYPES
+    )
+
+
+@app.route("/computers")
+def list_computers():
+    connection = get_connection()
+    cursor = connection.cursor(dictionary=True)
+
+    cursor.execute("""
+        SELECT 
+            id,
+            inventory_number,
+            model,
+            computer_type,
+            department,
+            responsible_employee,
+            commissioning_date
+        FROM computers
+        ORDER BY id DESC
+    """)
+
+    computers = cursor.fetchall()
+
+    cursor.close()
+    connection.close()
+
+    return render_template("list.html", computers=computers)
+
+
+if name == "__main__":
+    app.run(debug=True)
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Добавить компьютер</title>
+    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+</head>
+<body class="w3-light-grey">
+
+<div class="w3-container w3-blue">
+    <h2>Учет компьютеров</h2>
+</div>
+
+<div class="w3-container w3-margin-top">
+    <a href="{{ url_for('list_computers') }}" class="w3-button w3-gray">
+        Список компьютеров
+    </a>
+
+    <div class="w3-card-4 w3-white w3-padding w3-margin-top">
+        <h3>Добавить компьютер</h3>
+
+        {% if errors %}
+            <div class="w3-panel w3-red">
+                {% for error in errors %}
+                    <p>{{ error }}</p>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <form method="post" class="w3-container">
+
+            <label>Инвентарный номер</label>
+            <input class="w3-input w3-border" type="text" name="inventory_number"
+                   value="{{ form_data.inventory_number }}" required>
+
+            <label class="w3-margin-top">Модель / марка</label>
+            <input class="w3-input w3-border" type="text" name="model"
+                   value="{{ form_data.model }}" required>
+
+            <label class="w3-margin-top">Тип</label>
+            <select class="w3-select w3-border" name="computer_type" required>
+                <option value="" disabled {% if not form_data.computer_type %}selected{% endif %}>
+                    Выберите тип
+                </option>
+                {% for type in valid_types %}
+                    <option value="{{ type }}"
+                        {% if form_data.computer_type == type %}selected{% endif %}>
+                        {{ type }}
+                    </option>
+                {% endfor %}
+            </select>
+
+            <label class="w3-margin-top">Отдел</label>
+            <input class="w3-input w3-border" type="text" name="department"
+                   value="{{ form_data.department }}" required>
+
+            <label class="w3-margin-top">Ответственный сотрудник</label>
+            <input class="w3-input w3-border" type="text" name="responsible_employee"
+                   value="{{ form_data.responsible_employee }}" required>
+
+            <label class="w3-margin-top">Дата ввода в эксплуатацию</label>
+            <input class="w3-input w3-border" type="date" name="commissioning_date"
+                   value="{{ form_data.commissioning_date }}" required>
+
+            <button class="w3-button w3-blue w3-margin-top" type="submit">
+                Добавить
+            </button>
+        </form>
+    </div>
+</div>
+
+</body>
+</html>
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Список компьютеров</title>
+    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+</head>
+<body class="w3-light-grey">
+
+<div class="w3-container w3-blue">
+    <h2>Учет компьютеров</h2>
+</div>
+
+<div class="w3-container w3-margin-top">
+    <a href="{{ url_for('add_computer') }}" class="w3-button w3-green">
+        Добавить компьютер
+    </a>
+
+    <div class="w3-card-4 w3-white w3-padding w3-margin-top">
+        <h3>Список всех компьютеров</h3>
+
+        {% if computers %}
+            <table class="w3-table-all w3-hoverable">
+                <thead>
+                    <tr class="w3-blue">
+                        <th>ID</th>
+                        <th>Инвентарный номер</th>
+                        <th>Модель / марка</th>
+                        <th>Тип</th>
+                        <th>Отдел</th>
+                        <th>Ответственный</th>
+                        <th>Дата ввода</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for computer in computers %}
+                        <tr>
+                            <td>{{ computer.id }}</td>
+                            <td>{{ computer.inventory_number }}</td>
+                            <td>{{ computer.model }}</td>
+                            <td>{{ computer.computer_type }}</td>
+                            <td>{{ computer.department }}</td>
+                            <td>{{ computer.responsible_employee }}</td>
+                            <td>{{ computer.commissioning_date }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>Записей пока нет.</p>
+        {% endif %}
+    </div>
+</div>
+
+</body>
+</html>
