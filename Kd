@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Список студентов</title>
+    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+</head>
+<body class="w3-light-grey">
+
+<div class="w3-container w3-padding-32">
+
+    <div class="w3-card w3-white w3-padding">
+
+        <h2 class="w3-center">Список студентов</h2>
+
+        <table class="w3-table w3-bordered w3-striped w3-margin-top">
+            <tr class="w3-blue">
+                <th>ФИО</th>
+                <th>Студенческий</th>
+                <th>Курс</th>
+                <th>Группа</th>
+                <th>Специальность</th>
+                <th>Email</th>
+                <th>Телефон</th>
+            </tr>
+
+            {% for s in students %}
+            <tr>
+                <td>{{ s.full_name }}</td>
+                <td>{{ s.student_id }}</td>
+                <td>{{ s.course }}</td>
+                <td>{{ s.group_name }}</td>
+                <td>{{ s.specialty }}</td>
+                <td>{{ s.email }}</td>
+                <td>{{ s.phone }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <p class="w3-center w3-margin-top">
+            <a href="{{ url_for('add_student') }}" class="w3-button w3-blue">
+                Назад
+            </a>
+        </p>
+
+    </div>
+
+</div>
+
+</body>
+</html>
